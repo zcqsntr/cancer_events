@@ -18,7 +18,7 @@ import tensorflow.keras.constraints as cs
 import matplotlib.pyplot as plt
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import Dense, Dropout, Activation, Conv1D, Flatten
+from tensorflow.keras.layers import Dense, Dropout, Activation, Conv1D, Flatten, MaxPooling1D, UpSampling1D
 from tensorflow.keras import utils as np_utils
 from tensorflow.keras import models
 import numpy.random as rng
@@ -80,12 +80,7 @@ def data_generator_multiple(ndat,nL,sd):
     print(data)
     return [data, labs]
 
-n_train = 10000
-n_test = 1000
 
-ndat = n_train + n_test
-nL = 100 #length
-sd = 0.5 #sd of noise
 
 def logistic_regression():
     data, labs = data_generator(ndat, nL, sd)
@@ -121,6 +116,38 @@ def convolution():
     model.fit(data[:n_train], labs[:n_train], epochs=50)
 
     score = model.evaluate(data[n_train:], labs[n_train:], verbose=0)
+    print('Test accuracy:', score[1])
+
+    layer_outputs = [layer.output for layer in model.layers]
+
+    activation_model = models.Model(inputs = model.input, outputs = layer_outputs)
+
+    return model, activation_model
+
+def auto_encoder():
+    data, labs = data_generator_multiple(ndat, nL, sd)
+    data = data.reshape((ndat, nL,1))
+    print(data[:n_train].shape)
+    #labs = np_utils.to_categorical(labs, 2)
+
+    #create model
+    input = Input(shape = (nL,1))
+    x = Conv1D(filters = 2, kernel_size=4, activation='relu', padding = 'same')(input)
+
+    encoded = MaxPooling1D(pool_size = 2, strides = 2, padding = 'same')(x) # stride is compression ratio
+
+    x = Conv1D(filters = 2, kernel_size=4, activation='relu', padding = 'same')(encoded)
+
+    x = UpSampling1D(size = 2)(x)
+
+    decoded = Conv1D(filters = 1, kernel_size=4, activation='linear', padding = 'same')(x)
+
+    model = Model(input, decoded)
+    model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
+
+    model.fit(data[:n_train], data[:n_train], batch_size = 32,epochs=30)
+
+    score = model.evaluate(data[n_train:], data[n_train:], verbose=0)
     print('Test accuracy:', score[1])
 
     layer_outputs = [layer.output for layer in model.layers]
@@ -190,6 +217,14 @@ def plot_filters(model):
 
 
 if __name__ == '__main__':
+    n_train = 10000
+    n_test = 1000
+
+    ndat = n_train + n_test
+    nL = 100 #length
+    sd = 0.5 #sd of noise
+
+
     print()
     print('-----------------Logistic regression---------------------')
     print()
@@ -198,6 +233,9 @@ if __name__ == '__main__':
     print()
     print('-----------------Convolution---------------------')
     print()
+
+
+
     '''
     model, activation_model = convolution()
     plot_filters(model)
@@ -221,7 +259,7 @@ if __name__ == '__main__':
     for layer in activation_model.predict(dl):
         print(layer.shape)
 
-    '''
+
 
     print()
     print('-----------------Convolution multiple events---------------------')
@@ -236,3 +274,17 @@ if __name__ == '__main__':
         print(model.predict(data[i].reshape((1,nL,1))))
         print(labs[i])
         print(activation_model.predict(data[i].reshape((1,nL,1)))[0])
+    '''
+
+    print()
+    print('------------------------------Autoencoder---------------------------')
+    print()
+
+    model, act_model = auto_encoder()
+
+    data, labs = data_generator_multiple(ndat, nL, sd)
+
+    for i in range(4):
+        print()
+        print('input:', data[i])
+        print('output: ', np.round(model.predict(data[i].reshape((1,nL,1))).reshape(data[i].shape)))
